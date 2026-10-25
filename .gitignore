@@ -9,6 +9,8 @@ output/
 runs/
 # Regenerated diagnostic images; several MB each. Only the JSON goldens are tracked.
 fixtures/*.png
+# Derived from the committed best.pt by tools/export_onnx.py.
+*.onnx
 
 # Flutter / Android
 flutter_app/.dart_tool/
