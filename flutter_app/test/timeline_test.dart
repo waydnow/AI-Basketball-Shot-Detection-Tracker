@@ -95,6 +95,15 @@ void main() {
       expect(nearPin(crowded, view, 5070000)?.id, 2);
       expect(nearPin(crowded, view, 4990000)?.id, 1);
     });
+
+    test('the first movement past the dead zone latches a pin drag to one axis', () {
+      expect(pinDragMode(const Offset(3, 2)), PinDrag.undecided, reason: 'a jittery finger');
+      expect(pinDragMode(const Offset(20, 4)), PinDrag.move);
+      expect(pinDragMode(const Offset(4, 20)), PinDrag.delete);
+      // The comparison is of the total moved so far, so a drag that went out and drifted
+      // sideways on the way is still the delete gesture it started as.
+      expect(pinDragMode(const Offset(120, 260)), PinDrag.delete);
+    });
   });
 
   group('cut plan', () {
@@ -149,5 +158,69 @@ void main() {
 
     await expectLater(
         find.byType(TimelineStrip), matchesGoldenFile('goldens/timeline_strip.png'));
+  });
+
+  testWidgets('a pin dragged down off the film is reported as having left the strip',
+      (tester) async {
+    final updates = <DragUpdate>[];
+    Shot? grabbed;
+    await tester.binding.setSurfaceSize(const Size(360, 220));
+    await tester.pumpWidget(MaterialApp(
+      home: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 360,
+          child: TimelineStrip(
+            view: const TimelineView(
+                durationUs: 10000000, viewStartUs: 0, viewUs: 10000000, width: 360),
+            shots: [shot(1, 5000000)],
+            positionUs: 2500000,
+            onSeek: (_) {},
+            onDragStart: (_, pin, _) => grabbed = pin,
+            onDragUpdate: updates.add,
+          ),
+        ),
+      ),
+    ));
+
+    // The 5s pin of a 10s clip across 360px. The first move only wins the arena, so there
+    // has to be another one before the strip says anything.
+    final drag = await tester.startGesture(const Offset(180, 16));
+    await drag.moveTo(const Offset(180, 60));
+    await tester.pump();
+    await drag.moveTo(const Offset(180, 92)); // still inside the 100px strip
+    await tester.pump();
+    expect(updates.last.offStrip, isFalse);
+    await drag.moveTo(const Offset(180, 190)); // below it
+    await tester.pump();
+    await drag.up();
+
+    expect(grabbed?.id, 1);
+    expect(updates.last.offStrip, isTrue);
+    expect(updates.last.us, 5000000, reason: 'straight down does not change the time');
+  });
+
+  testWidgets('the pin being dragged out is painted in delete red', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 120));
+    await tester.pumpWidget(MaterialApp(
+      home: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 360,
+          child: TimelineStrip(
+            view: const TimelineView(
+                durationUs: 10000000, viewStartUs: 0, viewUs: 10000000, width: 360),
+            shots: [shot(1, 5000000), shot(2, 9000000, make: false)],
+            positionUs: 2500000,
+            selectedId: 1,
+            deleteArmedId: 1,
+            onSeek: (_) {},
+          ),
+        ),
+      ),
+    ));
+
+    await expectLater(find.byType(TimelineStrip),
+        matchesGoldenFile('goldens/timeline_strip_delete_armed.png'));
   });
 }

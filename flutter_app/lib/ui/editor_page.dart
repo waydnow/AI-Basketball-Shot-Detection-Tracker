@@ -28,7 +28,7 @@ class EditorPage extends StatefulWidget {
   State<EditorPage> createState() => _EditorPageState();
 }
 
-enum _Drag { none, pan, pin, before, after }
+enum _Drag { none, pan, pin, before, after, delete }
 
 class _EditorPageState extends State<EditorPage> {
   late VideoPlayerController _controller;
@@ -38,6 +38,8 @@ class _EditorPageState extends State<EditorPage> {
   _Drag _drag = _Drag.none;
   int _dragAnchorUs = 0;
   Shot? _dragStart;
+  Offset _dragPx = Offset.zero;
+  bool _dragOffStrip = false;
   int _panStartUs = 0;
   int _positionUs = 0;
   String? _error;
@@ -156,6 +158,8 @@ class _EditorPageState extends State<EditorPage> {
   void _beginDrag(DragAction action, Shot? pin, int us) {
     _dragAnchorUs = us;
     _panStartUs = _view.viewStartUs;
+    _dragPx = Offset.zero;
+    _dragOffStrip = false;
     // Grabbing an unselected pin moves that pin, not whatever was selected before it.
     if (pin != null && pin.id != _selectedId) setState(() => _selectedId = pin.id);
     _dragStart = pin ?? _selected;
@@ -169,8 +173,20 @@ class _EditorPageState extends State<EditorPage> {
 
   /// The pin keeps its distance from the point you grabbed it at, so it does not jump
   /// under your finger when the window pans.
-  void _updateDrag(int us) {
+  void _updateDrag(DragUpdate update) {
+    final us = update.us;
+    _dragPx += update.delta;
     final start = _dragStart;
+    if (_drag == _Drag.pin && pinDragMode(_dragPx) == PinDrag.delete) {
+      // Pulling a pin out of the film. Nothing is written to the shot while it is armed, so
+      // dragging back in leaves it exactly where it was.
+      setState(() => _drag = _Drag.delete);
+      return;
+    }
+    if (_drag == _Drag.delete) {
+      if (update.offStrip != _dragOffStrip) setState(() => _dragOffStrip = update.offStrip);
+      return;
+    }
     if (_drag == _Drag.pan) {
       setState(() => _view = _view.panned(_panStartUs + (_dragAnchorUs - us)));
       return;
@@ -199,12 +215,25 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _endDrag() async {
-    if (_drag != _Drag.pin && _drag != _Drag.before && _drag != _Drag.after) {
+    final kind = _drag;
+    final armed = kind == _Drag.delete && _dragOffStrip;
+    final dragged = _dragStart;
+    setState(() {
       _drag = _Drag.none;
+      _dragPx = Offset.zero;
+      _dragOffStrip = false;
+    });
+    if (armed) {
+      if (dragged != null) await _delete(dragged);
+      if (!mounted || dragged == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${formatUs(dragged.tUs)} 已删除'),
+        action: SnackBarAction(label: '撤销', onPressed: () => _restore(dragged)),
+      ));
       return;
     }
+    if (kind != _Drag.pin && kind != _Drag.before && kind != _Drag.after) return;
     final edited = _selected;
-    _drag = _Drag.none;
     if (edited != null) await widget.db.updateShot(edited);
   }
 
@@ -271,6 +300,7 @@ class _EditorPageState extends State<EditorPage> {
               shots: shots,
               positionUs: _positionUs,
               selectedId: _selectedId,
+              deleteArmedId: _drag == _Drag.delete && _dragOffStrip ? _dragStart?.id : null,
               onSeek: _seek,
               onPinTap: (shot) {
                 setState(() => _selectedId = shot.id);
@@ -297,7 +327,7 @@ class _EditorPageState extends State<EditorPage> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('拖动针改时间 · 拖动两侧把手改前后窗口 · 长按空白处新增 · 左滑删除',
+                  child: Text('拖动针改时间 · 拖两侧把手改窗口 · 长按空白新增 · 把针拖出时间轴删除',
                       style: TextStyle(fontSize: 11, color: Colors.white54))),
             ),
             Expanded(
@@ -320,38 +350,28 @@ class _EditorPageState extends State<EditorPage> {
   Widget _row(Shot shot) {
     final selected = shot.id == _selectedId;
     final color = shot.manual ? const Color(0xFFFFB300) : const Color(0xFF43A047);
-    return Dismissible(
-      key: ValueKey(shot.id),
-      background: const ColoredBox(color: Color(0xFF7F1D1D)),
-      secondaryBackground: const ColoredBox(color: Color(0xFF7F1D1D)),
-      onDismissed: (_) async {
-        await _delete(shot);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${formatUs(shot.tUs)} 已删除'),
-          action: SnackBarAction(label: '撤销', onPressed: () => _restore(shot)),
-        ));
-      },
-      child: ListTile(
-        selected: selected,
-        dense: true,
-        leading: Icon(shot.isMake ? Icons.circle : Icons.circle_outlined, color: color, size: 18),
-        title: Text('${formatUs(shot.tUs)}  ${shot.isMake ? '进球' : '未中'}'),
-        subtitle: Text('±${(shot.windowBeforeUs / 1000000).toStringAsFixed(1)}s / '
-            '+${(shot.windowAfterUs / 1000000).toStringAsFixed(1)}s · '
-            '${shot.origin == ShotOrigin.auto ? '自动' : '手动'}'),
-        trailing: Checkbox(
-          value: shot.enabled,
-          onChanged: (on) async {
-            final updated = shot.copyWith(enabled: on ?? true);
-            setState(() => _shots = [
-                  for (final s in _shots) s.id == shot.id ? updated : s
-                ]);
-            await widget.db.updateShot(updated);
-          },
-        ),
-        onTap: () => _seek(shot.tUs),
+    // Deleting lives on the timeline (drag the pin out of the film), not here: a row swipe
+    // asked the user to hit a 4px-tall target inside a list that shares the screen with a
+    // video, a player bar and the strip itself.
+    return ListTile(
+      selected: selected,
+      dense: true,
+      leading: Icon(shot.isMake ? Icons.circle : Icons.circle_outlined, color: color, size: 18),
+      title: Text('${formatUs(shot.tUs)}  ${shot.isMake ? '进球' : '未中'}'),
+      subtitle: Text('±${(shot.windowBeforeUs / 1000000).toStringAsFixed(1)}s / '
+          '+${(shot.windowAfterUs / 1000000).toStringAsFixed(1)}s · '
+          '${shot.origin == ShotOrigin.auto ? '自动' : '手动'}'),
+      trailing: Checkbox(
+        value: shot.enabled,
+        onChanged: (on) async {
+          final updated = shot.copyWith(enabled: on ?? true);
+          setState(() => _shots = [
+                for (final s in _shots) s.id == shot.id ? updated : s
+              ]);
+          await widget.db.updateShot(updated);
+        },
       ),
+      onTap: () => _seek(shot.tUs),
     );
   }
 

@@ -67,6 +67,32 @@ class TimelineView {
 /// What a drag that started at `x` is allowed to change.
 enum DragAction { none, pan, movePin, windowBefore, windowAfter }
 
+/// What a pin drag means. The first movement past the dead zone decides it, once and for
+/// the whole gesture: mostly vertical is "pull the pin out of the film to delete it", mostly
+/// horizontal is "change its time". Latching is what lets the second one move the pin while
+/// the first one leaves it exactly where it was.
+enum PinDrag { undecided, move, delete }
+
+PinDrag pinDragMode(Offset moved) {
+  if (moved.distance < 8) return PinDrag.undecided;
+  return moved.dy.abs() > moved.dx.abs() ? PinDrag.delete : PinDrag.move;
+}
+
+/// Where the finger is, as reported during a drag. The strip owns the pixels, so it decides
+/// whether the finger has left the film; the parent only accumulates `delta` to feed
+/// [pinDragMode] and to translate `us` into an edit.
+class DragUpdate {
+  const DragUpdate({required this.us, required this.delta, required this.offStrip});
+
+  final int us;
+
+  /// This event's movement, in pixels and on both axes.
+  final Offset delta;
+
+  /// The finger is outside the strip: a delete drag is armed.
+  final bool offStrip;
+}
+
 /// Resolution order is the one the user sees: the selected pin's window handles win first -
 /// they are only drawn when it is selected and sit a whole window away from its head, so
 /// they cannot be found by the pin test below. Then a pin wins over the strip, and only an
@@ -115,12 +141,16 @@ class TimelinePainter extends CustomPainter {
     required this.shots,
     required this.positionUs,
     this.selectedId,
+    this.deleteArmedId,
   });
 
   final TimelineView view;
   final List<Shot> shots;
   final int positionUs;
   final int? selectedId;
+
+  /// A pin being dragged out of the film: drawn in delete red, and nothing else changes.
+  final int? deleteArmedId;
 
   static const _ruler = 18.0;
   static const _stripTop = 30.0;
@@ -193,10 +223,15 @@ class TimelinePainter extends CustomPainter {
     final before = view.xOfUs(shot.tUs - shot.windowBeforeUs);
     final after = view.xOfUs(shot.tUs + shot.windowAfterUs);
     final selected = shot.id != null && shot.id == selectedId;
-    final base = shot.manual ? const Color(0xFFFFB300) : const Color(0xFF43A047);
-    final color = shot.enabled ? base : base.withValues(alpha: 0.35);
+    final armed = shot.id != null && shot.id == deleteArmedId;
+    final base = armed
+        ? const Color(0xFFE53935)
+        : shot.manual
+            ? const Color(0xFFFFB300)
+            : const Color(0xFF43A047);
+    final color = armed || shot.enabled ? base : base.withValues(alpha: 0.35);
 
-    if (shot.enabled) {
+    if (shot.enabled || armed) {
       canvas.drawRect(
         Rect.fromLTRB(before, _stripTop + 12, after, _stripBottom - 12),
         Paint()..color = color.withValues(alpha: selected ? 0.30 : 0.16),
@@ -260,6 +295,7 @@ class TimelinePainter extends CustomPainter {
       old.view.width != view.width ||
       old.positionUs != positionUs ||
       old.selectedId != selectedId ||
+      old.deleteArmedId != deleteArmedId ||
       old.shots != shots;
 }
 
@@ -272,6 +308,7 @@ class TimelineStrip extends StatelessWidget {
     required this.shots,
     required this.positionUs,
     this.selectedId,
+    this.deleteArmedId,
     this.height = 100,
     this.onSeek,
     this.onPinTap,
@@ -285,6 +322,9 @@ class TimelineStrip extends StatelessWidget {
   final List<Shot> shots;
   final int positionUs;
   final int? selectedId;
+
+  /// Painted in delete red while the drag that will remove it is in flight.
+  final int? deleteArmedId;
   final double height;
 
   /// Called with the time under the finger.
@@ -296,7 +336,7 @@ class TimelineStrip extends StatelessWidget {
   /// here, where the pixel width is known, and reported to the parent - the strip stays
   /// stateless and the parent never has to hit-test in pixels.
   final void Function(DragAction action, Shot? pin, int us)? onDragStart;
-  final ValueChanged<int>? onDragUpdate;
+  final ValueChanged<DragUpdate>? onDragUpdate;
   final VoidCallback? onDragEnd;
 
   @override
@@ -323,7 +363,10 @@ class TimelineStrip extends StatelessWidget {
           onLongPressStart: onPinLongPress == null
               ? null
               : (d) => onPinLongPress!.call(sized.usOfX(d.localPosition.dx)),
-          onHorizontalDragStart: onDragStart == null
+          // A pan, not a horizontal drag: pulling a pin out of the film is the one gesture
+          // that needs the vertical axis, and an axis the strip never reports cannot be
+          // tested by anything.
+          onPanStart: onDragStart == null
               ? null
               : (d) {
                   final us = sized.usOfX(d.localPosition.dx);
@@ -336,13 +379,22 @@ class TimelineStrip extends StatelessWidget {
                       nearPin(shots, sized, us),
                       us);
                 },
-          onHorizontalDragUpdate:
-              onDragUpdate == null ? null : (d) => onDragUpdate!(sized.usOfX(d.localPosition.dx)),
-          onHorizontalDragEnd: onDragEnd == null ? null : (d) => onDragEnd!(),
+          onPanUpdate: onDragUpdate == null
+              ? null
+              : (d) => onDragUpdate!(DragUpdate(
+                  us: sized.usOfX(d.localPosition.dx),
+                  delta: d.delta,
+                  offStrip: d.localPosition.dy < 0 || d.localPosition.dy > height,
+                )),
+          onPanEnd: onDragEnd == null ? null : (d) => onDragEnd!(),
           child: CustomPaint(
             size: Size(constraints.maxWidth, height),
             painter: TimelinePainter(
-                view: sized, shots: shots, positionUs: positionUs, selectedId: selectedId),
+                view: sized,
+                shots: shots,
+                positionUs: positionUs,
+                selectedId: selectedId,
+                deleteArmedId: deleteArmedId),
           ),
         );
       },

@@ -44,7 +44,9 @@ $ANDROID_HOME/emulator/emulator -avd flutter_emulator -gpu host -no-audio -no-bo
 - 左右拖针：改时间，针变琥珀色（手动），自动检测结果不再被覆盖。
 - 选中后拖两侧把手：单独改这个点的前 / 后截取窗口。
 - 长按空白：在该时刻加一根手动针。
-- 列表左滑删除，可撤销；勾选框控制这根针是否参与导出。
+- 把针拖出时间轴（上或下）：针变红，松手即删除，列表上方给撤销；拖回时间轴内再松手，针留在原位。
+- 拖动的第一个方向决定这次拖拽是改时间还是删除：先左右就是改时间，先上下就是删除，中途不会换。
+- 勾选框控制这根针是否参与导出。
 - 缩放按钮改的是可视窗口，不是视频。
 
 ## 网络替代源
@@ -65,7 +67,7 @@ flutter test
 
 - `test/parity_test.dart`：把黄金检测逐帧喂进 Dart 状态机，断言事件与 Python 完全一致。
 - `test/fixture_sync_test.dart`：App 内置的示例事件必须与 `fixtures/` 的 Python 黄金文件逐字节相同，防止两边各说各话。
-- `test/timeline_test.dart`：时间轴换算、拖拽命中判定、截取清单，外加一张 `test/goldens/timeline_strip.png` 渲染基线。
+- `test/timeline_test.dart`：时间轴换算、拖拽命中与「先上下还是先左右」的判定、截取清单，外加两张渲染基线 `test/goldens/timeline_strip.png`（常态）与 `timeline_strip_delete_armed.png`（针被拖出时间轴时的红色态）。
 
 ## 目录
 
