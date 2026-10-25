@@ -13,14 +13,30 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PUB_HOSTED_URL=https://pub.flutter-io.cn
 export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
-adb push ../video_test_5.mp4 /sdcard/DCIM/
-# 相册里看不到这个文件时，补一次媒体扫描
-adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-  -d file:///sdcard/DCIM/video_test_5.mp4
+adb push ../video_test_5.mp4 /sdcard/Download/
+# Android 11+ 的 MediaProvider 会忽略 MEDIA_SCANNER_SCAN_FILE 广播，必须显式让它扫这个文件，
+# 否则系统选择器里看不到（`content query` 能查到 _id 才算成功）。
+adb shell content call --uri content://media/external/file --method scan_file \
+  --arg /storage/emulated/0/Download/video_test_5.mp4
 flutter run
 ```
 
 进 App 后「选择视频」→ 选 `video_test_5.mp4` → 「识别」，时间轴上会出现 28 根针（25 进球 / 3 未中），与 `tools/dump_reference.py` 的输出一致。
+
+## 没有真机时：x86_64 模拟器
+
+这台 Intel Mac 上模拟器是可用的——新版 emulator 走 macOS Hypervisor.framework，不需要 HAXM/AEHD 内核扩展，所以不需要管理员权限。用 `emulator -accel-check` 确认（返回 `0` 即加速可用）。
+
+```sh
+sdkmanager --install "emulator" "system-images;android-35;google_apis;x86_64"
+echo no | avdmanager create avd -n flutter_emulator \
+  -k "system-images;android-35;google_apis;x86_64" -d pixel_6
+$ANDROID_HOME/emulator/emulator -avd flutter_emulator -gpu host -no-audio -no-boot-anim &
+```
+
+首次开机约 70 s。APK 里有 `lib/x86_64/`（Flutter 引擎 + FFmpeg 都在），所以端侧推理也能在上面调。
+
+注意 `flutter emulators` 报的 `avdmanager is missing from the Android SDK` 是兜底文案：它的判定条件是 `avdManagerPath != null && emulator 包存在`，缺的其实是 `emulator` 包或 system image，跟 `avdmanager` 无关。
 
 ## 时间轴操作
 

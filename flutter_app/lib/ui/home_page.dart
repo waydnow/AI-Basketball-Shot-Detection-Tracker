@@ -174,7 +174,7 @@ class _EmptyLibrary extends StatelessWidget {
             Text('还没有视频\n点右下角「选择视频」导入投篮片段',
                 textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 8),
-            const Text('调试时可以先 adb push video_test_5.mp4 到 DCIM，\n它的标记数会和 Python 黄金文件对上。',
+            const Text('调试视频见 README：push 到 /sdcard/Download/ 之后，\n还要让 MediaProvider 扫一次才会在选择器里出现。',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 11, color: Colors.white38)),
           ],
