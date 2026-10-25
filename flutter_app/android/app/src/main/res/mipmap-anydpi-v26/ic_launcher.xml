@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8+ masks the launcher icon to a circle or squircle. The art is baked into the
+     background layer with its own dark field, so the mask crops only empty margin and the
+     legacy PNGs below stay identical on older devices. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_matte"/>
+    <foreground android:drawable="@android:color/transparent"/>
+</adaptive-icon>
