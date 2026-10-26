@@ -45,30 +45,14 @@ class _SettingsPageState extends State<SettingsPage> {
             format: (v) => '${v.toStringAsFixed(1)}s',
             onChanged: (v) => _set(() => s.windowAfterS = v),
           ),
-          const _Section('识别阈值', '端侧推理（阶段 4）接入后按这些值过滤检测框'),
-          _SliderTile(
-            label: '篮球置信度',
-            value: s.ballConf,
-            max: 0.9,
-            divisions: 18,
-            format: (v) => v.toStringAsFixed(2),
-            onChanged: (v) => _set(() => s.ballConf = v),
-          ),
-          _SliderTile(
-            label: '篮筐附近篮球置信度',
-            value: s.ballConfNearHoop,
-            max: 0.9,
-            divisions: 18,
-            format: (v) => v.toStringAsFixed(2),
-            onChanged: (v) => _set(() => s.ballConfNearHoop = v),
-          ),
-          _SliderTile(
-            label: '篮筐置信度',
-            value: s.hoopConf,
-            max: 0.9,
-            divisions: 18,
-            format: (v) => v.toStringAsFixed(2),
-            onChanged: (v) => _set(() => s.hoopConf = v),
+          const _Section('识别灵敏度', '阈值越高越严：漏检多就调宽松，误判多就调严格'),
+          _ChoiceTile<DetectionSensitivity>(
+            label: '检测灵敏度',
+            detail: '篮球 ${s.ballConf.toStringAsFixed(2)} · 筐区篮球 ${s.ballConfNearHoop.toStringAsFixed(2)}'
+                ' · 篮筐 ${s.hoopConf.toStringAsFixed(2)}',
+            value: s.sensitivity,
+            values: {for (final e in DetectionSensitivity.values) e: e.label},
+            onChanged: (v) => _set(() => s.sensitivity = v),
           ),
           const _Section('导出'),
           SwitchListTile(
@@ -169,9 +153,13 @@ class _ChoiceTile<T> extends StatelessWidget {
     required this.value,
     required this.values,
     required this.onChanged,
+    this.detail,
   });
 
   final String label;
+
+  /// The numbers behind the chosen word, so a preset is never a black box.
+  final String? detail;
   final T value;
   final Map<T, String> values;
   final ValueChanged<T> onChanged;
@@ -180,6 +168,7 @@ class _ChoiceTile<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       title: Text(label),
+      subtitle: detail == null ? null : Text(detail!, style: const TextStyle(fontSize: 11)),
       trailing: DropdownButton<T>(
         value: values.containsKey(value) ? value : values.keys.first,
         items: [for (final e in values.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
