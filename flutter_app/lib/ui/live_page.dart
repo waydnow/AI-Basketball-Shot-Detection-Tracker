@@ -54,15 +54,23 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    // Pinning the capture orientation is what keeps the analysis buffer's rotation stable, and
-    // landscape is also what the model saw in training: the shot logic's geometry assumes a
-    // wide frame with the rim above the ball's arc.
+    // Landscape only, because the shot logic's geometry assumes a wide frame with the rim above
+    // the ball's arc - which is also what the model saw in training. The capture orientation is
+    // deliberately *not* locked; see [_autoRotation].
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     WidgetsBinding.instance.addObserver(this);
     _start();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // The display rotation is the reference the streamed buffer is turned against, and the
+    // phone can change it without sending this page a single camera event.
+    if (mounted) setState(() {});
   }
 
   @override
@@ -108,7 +116,6 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
         imageFormatGroup: ImageFormatGroup.nv21,
       );
       await controller.initialize();
-      await controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
       await controller.startImageStream(_onImage);
       if (!mounted) {
         await controller.dispose();
@@ -163,24 +170,37 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
 
   /// Degrees the streamed buffer must be turned clockwise to be upright.
   ///
-  /// `camera_android_camerax` hands over the raw sensor buffer, and `sensorOrientation` is
-  /// quoted for the device's natural (portrait) orientation, so the screen's own rotation is
-  /// subtracted. With the capture orientation pinned to landscape this leaves 0 or 180, which
-  /// is also why no axis swap is expected here. The manual override exists because this
-  /// formula cannot be checked away from a phone.
-  int _rotation(CameraController camera) {
-    final override = _rotationOverride;
-    if (override != null) return override;
+  /// The Android preview widget turns the picture by `sensorOrientation - displayRotation` and
+  /// then subtracts the turn `CameraPreview` is about to add, which it reads from
+  /// [CameraValue.deviceOrientation]. Nothing else in Flutter can see the display rotation -
+  /// `dart:ui` has no such getter - so this is the only reference the boxes can share with the
+  /// pixels, and the reason the two agree as long as nothing locks the capture orientation:
+  /// a lock changes only `CameraPreview`'s half of that subtraction, and the leftover is exactly
+  /// the difference between the lock and the grip - 180 degrees when the phone is held in the
+  /// other landscape.
+  int _autoRotation(CameraController camera) {
     const screenDegrees = {
       DeviceOrientation.portraitUp: 0,
       DeviceOrientation.landscapeRight: 90,
       DeviceOrientation.portraitDown: 180,
       DeviceOrientation.landscapeLeft: 270,
     };
-    final screen =
-        screenDegrees[camera.value.lockedCaptureOrientation ??
-            camera.value.deviceOrientation]!;
-    return (camera.description.sensorOrientation - screen + 360) % 360;
+    return (camera.description.sensorOrientation -
+            screenDegrees[camera.value.deviceOrientation]! +
+            360) %
+        360;
+  }
+
+  /// The rotation actually in use: the manual chips win over the computed one.
+  int _rotation(CameraController camera) =>
+      _rotationOverride ?? _autoRotation(camera);
+
+  /// Quarter turns the whole preview box takes on top of the automatic ones, so a manual
+  /// rotation turns the pixels the same way it turns the frame the boxes are measured in.
+  int _previewTurns(CameraController camera) {
+    final override = _rotationOverride;
+    if (override == null) return 0;
+    return (((override - _autoRotation(camera)) % 360) + 360) % 360 ~/ 90;
   }
 
   void _onImage(CameraImage image) {
@@ -290,20 +310,23 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
             Center(
               child: AspectRatio(
                 aspectRatio: _uprightAspect(camera),
-                child: CameraPreview(
-                  camera,
-                  child: _overlay && _detector != null
-                      ? IgnorePointer(
-                          child: CustomPaint(
-                            painter: _BoxPainter(
-                              _balls,
-                              _hoops,
-                              _trail,
-                              _frameSize,
+                child: RotatedBox(
+                  quarterTurns: _previewTurns(camera),
+                  child: CameraPreview(
+                    camera,
+                    child: _overlay && _detector != null
+                        ? IgnorePointer(
+                            child: CustomPaint(
+                              painter: _BoxPainter(
+                                _balls,
+                                _hoops,
+                                _trail,
+                                _frameSize,
+                              ),
                             ),
-                          ),
-                        )
-                      : null,
+                          )
+                        : null,
+                  ),
                 ),
               ),
             )
@@ -464,7 +487,9 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 4),
           ChoiceChip(
-            label: Text('自动 ${camera == null ? '' : '${_rotation(camera)}°'}'),
+            label: Text(
+              '自动 ${camera == null ? '' : '${_autoRotation(camera)}°'}',
+            ),
             visualDensity: VisualDensity.compact,
             selected: _rotationOverride == null,
             onSelected: (_) => setState(() => _rotationOverride = null),
