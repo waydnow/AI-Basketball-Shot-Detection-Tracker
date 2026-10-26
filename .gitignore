@@ -19,6 +19,12 @@ flutter_app/build/
 flutter_app/android/.gradle/
 flutter_app/android/local.properties
 flutter_app/android/app/.cxx/
+# Pulled from the onnxruntime-android AAR: the pub plugin ships arm .so only, so this is
+# what lets the x86_64 emulator load the model. Real devices get the plugin's own copy.
+flutter_app/android/app/src/main/jniLibs/x86_64/
+# The same trick for `flutter test` on the host: the plugin looks up this exact filename, and
+# it is a copy of the one inside .venv (see the header of live_reference_test.dart).
+flutter_app/libonnxruntime*.dylib
 
 # Editors / OS
 .idea/

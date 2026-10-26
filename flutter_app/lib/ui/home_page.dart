@@ -6,6 +6,7 @@ import '../data/database.dart';
 import '../data/settings.dart';
 import '../domain/models.dart';
 import 'editor_page.dart';
+import 'live_page.dart';
 import 'settings_page.dart';
 
 typedef LibraryEntry = ({Video video, int shots, int makes});
@@ -31,7 +32,15 @@ class _HomePageState extends State<HomePage> {
   List<LibraryEntry> _items = const [];
   bool _loading = true;
 
-  static const _videoExtensions = {'.mp4', '.mov', '.mkv', '.avi', '.3gp', '.webm', '.m4v'};
+  static const _videoExtensions = {
+    '.mp4',
+    '.mov',
+    '.mkv',
+    '.avi',
+    '.3gp',
+    '.webm',
+    '.m4v',
+  };
 
   @override
   void initState() {
@@ -62,27 +71,40 @@ class _HomePageState extends State<HomePage> {
       }
       // The picker copies the clip into the app cache, and that path is stable enough to be
       // the row id - which is what keeps re-picking the same clip from duplicating markers.
-      await widget.db.upsertVideo(Video(id: file.path, uri: file.path, durationUs: 0));
+      await widget.db.upsertVideo(
+        Video(id: file.path, uri: file.path, durationUs: 0),
+      );
       added++;
     }
     await _reload();
     if (!mounted || skipped == 0) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$added 个视频已加入，跳过 $skipped 个非视频文件')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$added 个视频已加入，跳过 $skipped 个非视频文件')));
   }
 
   Future<void> _open(LibraryEntry entry) async {
     await widget.db.upsertVideo(entry.video);
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => EditorPage(
-        video: entry.video,
-        db: widget.db,
-        settings: widget.settings,
-        analysis: widget.analysis,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => EditorPage(
+          video: entry.video,
+          db: widget.db,
+          settings: widget.settings,
+          analysis: widget.analysis,
+        ),
       ),
-    ));
+    );
     await _reload();
+  }
+
+  Future<void> _openLive() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => LivePage(settings: widget.settings),
+      ),
+    );
   }
 
   Future<void> _confirmDelete(LibraryEntry entry) async {
@@ -92,8 +114,14 @@ class _HomePageState extends State<HomePage> {
         title: const Text('移除这个视频？'),
         content: Text('只从列表里删除，${entry.shots} 个标记也会一并清掉，相册里的原片不受影响。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -109,13 +137,23 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('篮球高光'),
         actions: [
+          TextButton.icon(
+            onPressed: _openLive,
+            icon: const Icon(Icons.sports_basketball_outlined, size: 18),
+            label: const Text('实时'),
+          ),
           IconButton(
             tooltip: '设置',
             icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
-              await Navigator.of(context).push(MaterialPageRoute<void>(
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
                   builder: (context) => SettingsPage(
-                      settings: widget.settings, analysisLabel: widget.analysis.label)));
+                    settings: widget.settings,
+                    analysisLabel: widget.analysis.label,
+                  ),
+                ),
+              );
               await _reload();
             },
           ),
@@ -129,24 +167,33 @@ class _HomePageState extends State<HomePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? const _EmptyLibrary()
-              : ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 88),
-                  itemCount: _items.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) => _tile(_items[i]),
-                ),
+          ? const _EmptyLibrary()
+          : ListView.separated(
+              padding: const EdgeInsets.only(bottom: 88),
+              itemCount: _items.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, i) => _tile(_items[i]),
+            ),
     );
   }
 
   Widget _tile(LibraryEntry entry) {
     final video = entry.video;
     return ListTile(
-      title: Text(clipLabel(video.uri), maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${video.width == 0 ? '规格未知' : '${video.width}x${video.height}'} · '
-          '${video.durationUs == 0 ? '时长未知' : formatUs(video.durationUs)}'),
+      title: Text(
+        clipLabel(video.uri),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${video.width == 0 ? '规格未知' : '${video.width}x${video.height}'} · '
+        '${video.durationUs == 0 ? '时长未知' : formatUs(video.durationUs)}',
+      ),
       trailing: entry.shots == 0
-          ? const Text('未标记', style: TextStyle(fontSize: 12, color: Colors.white54))
+          ? const Text(
+              '未标记',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            )
           : Chip(
               label: Text('${entry.makes}/${entry.shots}'),
               visualDensity: VisualDensity.compact,
@@ -171,12 +218,17 @@ class _EmptyLibrary extends StatelessWidget {
           children: [
             const Icon(Icons.movie_outlined, size: 56, color: Colors.white24),
             const SizedBox(height: 12),
-            Text('还没有视频\n点右下角「选择视频」导入投篮片段',
-                textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+            Text(
+              '还没有视频\n点右下角「选择视频」导入投篮片段',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
             const SizedBox(height: 8),
-            const Text('调试视频见 README：push 到 /sdcard/Download/ 之后，\n还要让 MediaProvider 扫一次才会在选择器里出现。',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: Colors.white38)),
+            const Text(
+              '调试视频见 README：push 到 /sdcard/Download/ 之后，\n还要让 MediaProvider 扫一次才会在选择器里出现。',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.white38),
+            ),
           ],
         ),
       ),

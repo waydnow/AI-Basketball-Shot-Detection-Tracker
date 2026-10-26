@@ -18,11 +18,15 @@ dependencies:
   shared_preferences: ^2.3.3
   # GPL-3.0. Fine while this is a personal project; swap for Media3 Transformer if it ships closed.
   ffmpeg_kit_flutter_new: ^4.6.7
+  camera: ^0.12.0+2
+  onnxruntime: ^1.4.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # StreamQueue, for pulling one result at a time off the worker isolate in the live tests.
+  async: ^2.11.0
 
 flutter:
   uses-material-design: true
@@ -31,3 +35,6 @@ flutter:
     # Copy of ../fixtures/video_test_5_events.json; test/fixture_sync_test.dart fails if
     # the two diverge, so the on-screen demo cannot drift from the Python golden.
     - assets/fixtures/
+    # best.pt -> tools/export_onnx.py -> copy here. Ignored by git (*.onnx), so a fresh
+    # checkout has to run the export before the live camera screen can load a model.
+    - assets/model/

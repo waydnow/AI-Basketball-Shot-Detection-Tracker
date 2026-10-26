@@ -10,7 +10,7 @@ packages:
     source: hosted
     version: "2.7.0"
   async:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: async
       sha256: e2eb0491ba5ddb6177742d2da23904574082139b07c1e33b8503b9f46f3e1a37
@@ -25,6 +25,46 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.2"
+  camera:
+    dependency: "direct main"
+    description:
+      name: camera
+      sha256: "558230d6ce6ccea856b32d390db7e7b557adf4d9320aa614481bd3f2f608953f"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.12.0+2"
+  camera_android_camerax:
+    dependency: transitive
+    description:
+      name: camera_android_camerax
+      sha256: b5064cf25a2787d122d0bf12e77c7b1033a2b983d0730e3091f770ee376efde5
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.7.2"
+  camera_avfoundation:
+    dependency: transitive
+    description:
+      name: camera_avfoundation
+      sha256: "843247230a583e04742ea1434ce3f91e536760922fab67c72ce46aa34fac3e9d"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.10.3"
+  camera_platform_interface:
+    dependency: transitive
+    description:
+      name: camera_platform_interface
+      sha256: "9365babc7488a9e93d0ed6dcccd917619fb12ea6f9e601519e1191d4890ee2fe"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.14.0"
+  camera_web:
+    dependency: transitive
+    description:
+      name: camera_web
+      sha256: "5aecf1ac4dd4a949c5a7820e590020acb2bc35425384ab87a030e1739bfe12e2"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.3.5+6"
   characters:
     dependency: transitive
     description:
@@ -392,6 +432,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "9.5.0"
+  onnxruntime:
+    dependency: "direct main"
+    description:
+      name: onnxruntime
+      sha256: e77ec05acafc135cc5fe7bcdf11b101b39f06513c9d5e9fa02cb1929f6bac72a
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.4.1"
   package_config:
     dependency: transitive
     description:
@@ -613,6 +661,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.4"
+  stream_transform:
+    dependency: transitive
+    description:
+      name: stream_transform
+      sha256: a00e5f18bffc764f923e7dec1038527f7fe7a1791361a7117f0358193f13d53a
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.1.2"
   string_scanner:
     dependency: transitive
     description:
