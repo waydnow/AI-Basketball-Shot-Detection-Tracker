@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/database.dart';
@@ -44,6 +45,7 @@ class _EditorPageState extends State<EditorPage> {
   int _positionUs = 0;
   String? _error;
   bool _busy = false;
+  bool _full = false;
 
   @override
   void initState() {
@@ -98,9 +100,18 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   void dispose() {
+    if (_full) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Full screen is the only way to watch a clip big enough to judge a marker, because the
+  /// video slot shares the column with the strip and the shot list.
+  void _setFull(bool on) {
+    setState(() => _full = on);
+    SystemChrome.setEnabledSystemUIMode(
+        on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
   }
 
   Future<void> _analyze() async {
@@ -241,108 +252,161 @@ class _EditorPageState extends State<EditorPage> {
   Widget build(BuildContext context) {
     final ready = _error == null && _controller.value.isInitialized;
     final shots = _shots;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(clipLabel(widget.video.uri), maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-            tooltip: '生成高光',
-            icon: const Icon(Icons.movie_creation_outlined),
-            onPressed: ready && shots.isNotEmpty ? _showCutPlan : null,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-            )
-          else if (!ready)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
-          else
-            AspectRatio(
-              aspectRatio: _controller.value.aspectRatio,
-              child: VideoPlayer(_controller),
-            ),
-          if (ready) ...[
-            Row(
-              children: [
-                IconButton(
-                    icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
-                    onPressed: () =>
-                        _controller.value.isPlaying ? _controller.pause() : _controller.play()),
-                Text(formatUs(_positionUs), style: Theme.of(context).textTheme.bodySmall),
-                const Spacer(),
-                if (_busy) const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  TextButton.icon(
-                    onPressed: _analyze,
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('识别'),
+    // A landscape phone has ~400dp of height to spend on the video, the strip and the list.
+    // The two tip rows are the cheapest thing to give up, and you have already read them in
+    // portrait.
+    final shortScreen = MediaQuery.sizeOf(context).height < 700;
+    final showTips = !_full && !shortScreen;
+    return PopScope(
+      canPop: !_full,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _setFull(false);
+      },
+      child: Scaffold(
+        appBar: _full
+            ? null
+            : AppBar(
+                title:
+                    Text(clipLabel(widget.video.uri), maxLines: 1, overflow: TextOverflow.ellipsis),
+                actions: [
+                  IconButton(
+                    tooltip: '生成高光',
+                    icon: const Icon(Icons.movie_creation_outlined),
+                    onPressed: ready && shots.isNotEmpty ? _showCutPlan : null,
                   ),
-                IconButton(
-                  tooltip: '在当前时刻添加标记',
-                  icon: const Icon(Icons.add_location_alt_outlined),
-                  onPressed: () => _addPin(_positionUs),
-                ),
-              ],
-            ),
-            TimelineControls(
-              view: _view,
-              onZoom: (factor) => setState(
-                  () => _view = _view.zoom(factor, _view.viewStartUs + _view.viewUs ~/ 2)),
-              onFit: () => setState(() => _view = _view.fitted()),
-            ),
-            TimelineStrip(
-              view: _view,
-              shots: shots,
-              positionUs: _positionUs,
-              selectedId: _selectedId,
-              deleteArmedId: _drag == _Drag.delete && _dragOffStrip ? _dragStart?.id : null,
-              onSeek: _seek,
-              onPinTap: (shot) {
-                setState(() => _selectedId = shot.id);
-                _seek(shot.tUs);
-              },
-              onPinLongPress: _addPin,
-              onDragStart: _beginDrag,
-              onDragUpdate: _updateDrag,
-              onDragEnd: _endDrag,
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-              child: Row(
-                children: [
-                  const _Key(Color(0xFF43A047), '自动·进球'),
-                  const _Key(Color(0xFF43A047), '自动·未中', hollow: true),
-                  const _Key(Color(0xFFFFB300), '手动', hollow: true),
-                  const Spacer(),
-                  Text('${shots.length} 个标记', style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('拖动针改时间 · 拖两侧把手改窗口 · 长按空白新增 · 把针拖出时间轴删除',
-                      style: TextStyle(fontSize: 11, color: Colors.white54))),
-            ),
-            Expanded(
-              child: shots.isEmpty
-                  ? const Center(
-                      child: Text('还没有标记\n点「识别」跑检测，或长按时间轴手动打点',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54)))
-                  : ListView.builder(
-                      itemCount: shots.length,
-                      itemBuilder: (context, i) => _row(shots[i]),
+        body: Column(
+          children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+              )
+            else if (!ready)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              // A non-flex child of a Column is measured with an unbounded height, so sizing the
+              // video off the screen width alone walked 417px off the bottom in landscape. Both
+              // flex slots share what the strip leaves, with the video first: a loose child only
+              // claims what its aspect ratio fits into, and hands the rest back.
+              Flexible(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: _controller.value.aspectRatio,
+                        child: VideoPlayer(_controller),
+                      ),
+                      if (_full)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: IconButton(
+                            tooltip: '退出全屏',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => _setFull(false),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            if (ready) ...[
+              Row(
+                children: [
+                  IconButton(
+                      icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+                      onPressed: () => _controller.value.isPlaying
+                          ? _controller.pause()
+                          : _controller.play()),
+                  Text(formatUs(_positionUs), style: Theme.of(context).textTheme.bodySmall),
+                  const Spacer(),
+                  if (_busy)
+                    const SizedBox.square(
+                        dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    TextButton.icon(
+                      onPressed: _analyze,
+                      icon: const Icon(Icons.auto_awesome, size: 18),
+                      label: const Text('识别'),
                     ),
-            ),
+                  IconButton(
+                    tooltip: '在当前时刻添加标记',
+                    icon: const Icon(Icons.add_location_alt_outlined),
+                    onPressed: () => _addPin(_positionUs),
+                  ),
+                  IconButton(
+                    tooltip: _full ? '退出全屏' : '全屏看这段',
+                    icon: Icon(_full ? Icons.fullscreen_exit : Icons.fullscreen),
+                    onPressed: () => _setFull(!_full),
+                  ),
+                ],
+              ),
+              TimelineControls(
+                view: _view,
+                onZoom: (factor) => setState(
+                    () => _view = _view.zoom(factor, _view.viewStartUs + _view.viewUs ~/ 2)),
+                onFit: () => setState(() => _view = _view.fitted()),
+              ),
+              TimelineStrip(
+                view: _view,
+                shots: shots,
+                positionUs: _positionUs,
+                selectedId: _selectedId,
+                deleteArmedId: _drag == _Drag.delete && _dragOffStrip ? _dragStart?.id : null,
+                onSeek: _seek,
+                onPinTap: (shot) {
+                  setState(() => _selectedId = shot.id);
+                  _seek(shot.tUs);
+                },
+                onPinLongPress: _addPin,
+                onDragStart: _beginDrag,
+                onDragUpdate: _updateDrag,
+                onDragEnd: _endDrag,
+              ),
+              if (!_full) ...[
+                if (showTips)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                    child: Row(
+                      children: [
+                        const _Key(Color(0xFF43A047), '自动·进球'),
+                        const _Key(Color(0xFF43A047), '自动·未中', hollow: true),
+                        const _Key(Color(0xFFFFB300), '手动', hollow: true),
+                        const Spacer(),
+                        Text('${shots.length} 个标记',
+                            style: Theme.of(context).textTheme.labelSmall),
+                      ],
+                    ),
+                  ),
+                if (showTips)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('拖动针改时间 · 拖两侧把手改窗口 · 长按空白新增 · 把针拖出时间轴删除',
+                            style: TextStyle(fontSize: 11, color: Colors.white54))),
+                  ),
+                Expanded(
+                  flex: 2,
+                  child: shots.isEmpty
+                      ? const Center(
+                          child: Text('还没有标记\n点「识别」跑检测，或长按时间轴手动打点',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white54)))
+                      : ListView.builder(
+                          itemCount: shots.length,
+                          itemBuilder: (context, i) => _row(shots[i]),
+                        ),
+                ),
+              ],
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

@@ -73,6 +73,10 @@ $ANDROID_HOME/emulator/emulator -avd flutter_emulator -gpu host -no-audio -no-bo
 - 勾选框控制这根针是否参与导出。
 - 缩放按钮改的是可视窗口，不是视频。
 
+## 看片与全屏
+
+播放条右侧「全屏看这段」把标题栏、图例和标记列表都让给视频（immersive，返回键或 ✕ 退出）。不开全屏时视频槽位和时间轴按 5:2 分剩下的竖直空间——之前它是 `Column` 的非 flex 子节点，只按屏宽定高，横屏会 `BOTTOM OVERFLOWED BY 417 PIXELS` 把时间轴整个顶出屏幕。横屏（可用高度 < 700dp）还会收起图例和操作提示两行字，把高度留给画面。
+
 ## 网络替代源
 
 这台机器直连 `services.gradle.org` 约 50 KB/s、`maven.google.com` 不通，所以仓库里写死了三处镜像，注释都标了原因，换机器时把镜像行注释掉即可：
