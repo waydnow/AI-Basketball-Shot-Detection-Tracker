@@ -20,7 +20,6 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.settings.save();
     setState(() {});
   }
-
   @override
   Widget build(BuildContext context) {
     final s = widget.settings;
@@ -46,13 +45,50 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) => _set(() => s.windowAfterS = v),
           ),
           const _Section('识别灵敏度', '阈值越高越严：漏检多就调宽松，误判多就调严格'),
-          _ChoiceTile<DetectionSensitivity>(
-            label: '检测灵敏度',
-            detail: '篮球 ${s.ballConf.toStringAsFixed(2)} · 筐区篮球 ${s.ballConfNearHoop.toStringAsFixed(2)}'
-                ' · 篮筐 ${s.hoopConf.toStringAsFixed(2)}',
-            value: s.sensitivity,
-            values: {for (final e in DetectionSensitivity.values) e: e.label},
-            onChanged: (v) => _set(() => s.sensitivity = v),
+          ListTile(
+            title: const Text('预置'),
+            subtitle: Text('篮球 ${s.ballConf.toStringAsFixed(2)} · '
+                '筐区篮球 ${s.ballConfNearHoop.toStringAsFixed(2)} · '
+                '篮筐 ${s.hoopConf.toStringAsFixed(2)}'),
+            trailing: DropdownButton<DetectionSensitivity?>(
+              value: s.preset,
+              hint: const Text('自定义'),
+              items: [
+                for (final e in DetectionSensitivity.values)
+                  DropdownMenuItem(value: e, child: Text(e.label))
+              ],
+              onChanged: (v) => v == null ? null : _set(() => s.applyPreset(v)),
+            ),
+          ),
+          ExpansionTile(
+            title: const Text('单独调这三个值'),
+            subtitle: const Text('滑到某个预置上，上面的名字就会跟着变回去'),
+            children: [
+              _SliderTile(
+                label: '篮球置信度',
+                value: s.ballConf,
+                max: 0.9,
+                divisions: 18,
+                format: _conf,
+                onChanged: (v) => _set(() => s.ballConf = _step(v)),
+              ),
+              _SliderTile(
+                label: '篮筐附近篮球置信度',
+                value: s.ballConfNearHoop,
+                max: 0.9,
+                divisions: 18,
+                format: _conf,
+                onChanged: (v) => _set(() => s.ballConfNearHoop = _step(v)),
+              ),
+              _SliderTile(
+                label: '篮筐置信度',
+                value: s.hoopConf,
+                max: 0.9,
+                divisions: 18,
+                format: _conf,
+                onChanged: (v) => _set(() => s.hoopConf = _step(v)),
+              ),
+            ],
           ),
           const _Section('导出'),
           SwitchListTile(
@@ -88,6 +124,14 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// A confidence threshold reads as two decimals everywhere it appears.
+String _conf(double v) => v.toStringAsFixed(2);
+
+/// `Slider` does its own arithmetic, so 1/18 of 0.9 arrives as 0.30000000000000004 - which
+/// would stop matching the 0.3 a preset carries, and the label would say 自定义 under a
+/// perfectly standard triple.
+double _step(double v) => (v * 100).round() / 100;
 
 class _Section extends StatelessWidget {
   const _Section(this.title, [this.subtitle]);
@@ -153,13 +197,9 @@ class _ChoiceTile<T> extends StatelessWidget {
     required this.value,
     required this.values,
     required this.onChanged,
-    this.detail,
   });
 
   final String label;
-
-  /// The numbers behind the chosen word, so a preset is never a black box.
-  final String? detail;
   final T value;
   final Map<T, String> values;
   final ValueChanged<T> onChanged;
@@ -168,7 +208,6 @@ class _ChoiceTile<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       title: Text(label),
-      subtitle: detail == null ? null : Text(detail!, style: const TextStyle(fontSize: 11)),
       trailing: DropdownButton<T>(
         value: values.containsKey(value) ? value : values.keys.first,
         items: [for (final e in values.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
