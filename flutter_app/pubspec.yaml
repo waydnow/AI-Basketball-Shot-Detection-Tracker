@@ -1,7 +1,7 @@
 name: basketball_highlights
 description: "Pick basketball clips, mark the made shots on a timeline, export a highlight reel."
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.10.9

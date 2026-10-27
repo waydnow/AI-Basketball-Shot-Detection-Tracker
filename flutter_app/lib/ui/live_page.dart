@@ -111,7 +111,11 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
       );
       final controller = CameraController(
         back,
-        ResolutionPreset.medium,
+        // 16:9, because that is the only geometry the model and the goldens were ever validated
+        // on: video_test_5.mp4 is 960x540, which ultralytics letterboxes to 640x384 at imgsz 640.
+        // The 4:3 `medium` preset letterboxes to 640x480 instead - more pixels to sample through
+        // for a frame shape the graph has never seen.
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21,
       );
@@ -356,6 +360,43 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
         : size.width / size.height;
   }
 
+  /// What the pipeline is actually seeing, because every one of these numbers is a guess until a
+  /// phone answers it: the plugin is free to hand `ImageAnalysis` a different size than the
+  /// `previewSize` the preview surface is drawn at, and the boxes are painted into the preview's
+  /// box from the analysis frame's coordinates - so if the two aspects disagree the overlay is
+  /// stretched, which looks exactly like tracking that cannot hold a hoop.
+  /// What the pipeline is actually seeing, in two lines of numbers that cannot be worked out
+  /// away from a phone.
+  ///
+  /// The first is `best conf / the gate the tracker applies` per class - the boxes come back in
+  /// score order, so the head of the list is what survives or fails. A hoop below its gate means
+  /// no hoop point ever reaches [ShotTracker], and the state machine returns before it looks at
+  /// the ball, so no amount of shooting will move the counters. The second is the frame the model
+  /// reads against the frame the preview draws: `ImageAnalysis` and the preview surface are
+  /// separate CameraX use cases, and if their aspects disagree the boxes are stretched over the
+  /// picture - which looks exactly like tracking that cannot hold a hoop.
+  List<String> _diag(CameraController? camera) {
+    if (camera == null || !camera.value.isInitialized || _frameSize.isEmpty) {
+      return const [];
+    }
+    String gate(List<Detection> boxes, double threshold) => boxes.isEmpty
+        ? '无/${threshold.toStringAsFixed(2)}'
+        : '${boxes.first.conf.toStringAsFixed(2)}/${threshold.toStringAsFixed(2)}';
+    final preview = camera.value.previewSize!;
+    final rotation = _rotation(camera);
+    final turned = rotation == 90 || rotation == 270
+        ? preview.height / preview.width
+        : preview.width / preview.height;
+    final skew = _frameSize.width / _frameSize.height / turned - 1;
+    return [
+      '球${_balls.length} ${gate(_balls, widget.settings.ballConf)} · '
+          '筐${_hoops.length} ${gate(_hoops, widget.settings.hoopConf)}',
+      '分析${_frameSize.width.round()}x${_frameSize.height.round()} 预览'
+          '${preview.width.round()}x${preview.height.round()} 转$rotation°'
+          '${skew.abs() > 0.02 ? ' 比例差${(skew * 100).round()}%!' : ''}',
+    ];
+  }
+
   /// The counters sit over whatever the camera is pointed at, and a bright court swallows
   /// white text, so both bars carry their own gradient.
   Widget _scram(Widget child, {bool flip = false}) => DecoratedBox(
@@ -420,6 +461,11 @@ class _LivePageState extends State<LivePage> with WidgetsBindingObserver {
                 '预处理 ${_ms(_prepUs)} / 推理 ${_ms(_inferUs)} / 解码 ${_ms(_postUs)}',
                 style: const TextStyle(fontSize: 11, color: Colors.white54),
               ),
+              for (final line in _diag(_camera))
+                Text(
+                  line,
+                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                ),
             ],
           ),
           IconButton(
